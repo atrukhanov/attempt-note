@@ -2,10 +2,16 @@ import os
 import sys
 import subprocess
 import argparse
+from pathlib import Path
 
-RADICALE_CONFIG_PATH = os.environ['HOME'] + '/.config/radicale'
-SERVICE_CONFIG_PATH = os.environ['HOME'] + '/.config/systemd/user/'
-STORAGE = os.environ['HOME'] + '/.NStorage'
+RADICALE_CONFIG_DIR = Path('~/.config/radicale').expanduser()
+RADICALE_CONFIG = RADICALE_CONFIG_DIR / '.radicale_config'
+RADICALE_CREDENTIALS = RADICALE_CONFIG_DIR / '.credentials'
+
+SERVICE_CONFIG_DIR = Path('~/.config/systemd/user/').expanduser()
+SERVICE_CONFIG = SERVICE_CONFIG_DIR / 'radicale.service'
+
+STORAGE_DIR =  Path('~/.NStorage').expanduser()
 
 os.makedirs(RADICALE_CONFIG_PATH, exist_ok=True)
 os.makedirs(SERVICE_CONFIG_PATH, exist_ok=True)
@@ -23,12 +29,10 @@ def setup():
 
     #create user
     os.system('sudo apt install apache2-utils')
-    os.system('mkdir {}'.format(RADICALE_CONFIG_PATH)) 
 
-    print("Input new user's name:")
-    user = input()
-    os.system('htpasswd -c {}/.credentials {}'.format(RADICALE_CONFIG_PATH, user))
-
+    user = input("Input new user's name: ")
+    os.system(f'htpasswd -c {RADICALE_CREDENTIALS} {user}')
+    
     radicale_config_template = '''
     [server]
     # Bind all addresses
@@ -43,10 +47,11 @@ def setup():
     filesystem_folder = {2}
     '''
     print('Input service port:')
-    port = int(input())
+    
+    port = int(input('Input service port:'))
 
-    with open(RADICALE_CONFIG_PATH + '/.radicale_config', 'w') as radicale_config:
-        radicale_config.write(radicale_config_template.format(port, RADICALE_CONFIG_PATH + '/.credentials', STORAGE))
+    with RADICALE_CONFIG.open(mode='w') as radicale_config:
+        radicale_config.write(radicale_config_template.format(port, RADICALE_CREDENTIALS, STORAGE_DIR))
 
     #inint os service
     service_config_template = '''
@@ -60,25 +65,24 @@ def setup():
     [Install]
     WantedBy=default.target
     '''
-    with open(SERVICE_CONFIG_PATH + '/radicale.service', 'w') as service_config:
-        service_config.write(service_config_template.format(RADICALE_CONFIG_PATH + '/.radicale_config'))
-
+    with SERVICE_CONFIG.open(mode='w') as service_config:
+        service_config.write(service_config_template.format(RADICALE_CONFIG))
+    
     os.system('systemctl --user enable radicale')
-    os.system('systemctl --user start radicale')
 
 def show_config():
-    with open(RADICALE_CONFIG_PATH + '/.radicale_config', 'r') as config:
+    with RADICALE_CONFIG.open(mode='r') as config:
         print(config.read())
+ 
+def service_launch(command):
+        os.system(f'systemctl --user {command} radicale')
 
-def stop():
-    os.system('systemctl --user disable radicale')
-
-function_map = {'setup': setup, 'config': show_config, 'stop': stop}
+CONFIG_FUNCTIONS_MAP = {'setup': setup, 'config': show_config}
+LAUNCH_FUNCTIONS =  ['start', 'stop', 'status']
 
 if __name__ == '__main__': 
     args = parser.parse_args()
-    if args.command:
-        try:
-            function_map[args.command]()
-        except KeyError:
-            print("wrong command line parameter")
+    if args.command in CONFIG_FUNCTIONS_MAP.keys():
+        CONFIG_FUNCTIONS_MAP[args.command]()
+    elif args.command in LAUNCH_FUNCTIONS:
+        service_launch(args.command)
